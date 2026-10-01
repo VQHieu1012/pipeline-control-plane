@@ -1,3 +1,4 @@
+```
                     ┌────────────────────┐
 User / UI / Airflow │    REST API        │
 ───────────────────→│     FastAPI        │
@@ -24,7 +25,7 @@ User / UI / Airflow │    REST API        │
                        ┌──────────────────┼─────────────────┐
                        ▼                  ▼                 ▼
                  Kafka / Connect    Flink Operator      Schema Registry
-
+```
 
 
                   ┌─────────────┐
@@ -50,7 +51,7 @@ User / UI / Airflow │    REST API        │
                                       ▼
                                   Flink Job
 
-
+```
 Planner side:
 
 DB metadata
@@ -66,3 +67,4 @@ ResolvedSchema
 PipelinePlan
      ↓
 Desired Resources
+```
