@@ -24,3 +24,45 @@ User / UI / Airflow │    REST API        │
                        ┌──────────────────┼─────────────────┐
                        ▼                  ▼                 ▼
                  Kafka / Connect    Flink Operator      Schema Registry
+
+
+
+                  ┌─────────────┐
+                  │     API     │
+                  └──────┬──────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │  Postgres   │
+                  │Desired State│
+                  └──────┬──────┘
+                         │
+                         ▼
+                  ┌─────────────┐
+                  │ Reconciler  │
+                  └──────┬──────┘
+                         │
+             ┌───────────┼────────────┐
+             ▼           ▼            ▼
+         Kafka       Kafka Connect   Flink
+         Topic                      Operator
+                                      │
+                                      ▼
+                                  Flink Job
+
+
+Planner side:
+
+DB metadata
+     ↓
+CanonicalSchema
+     ↓
+Flink Planner Service
+     ↓
+validate transform
+     ↓
+ResolvedSchema
+     ↓
+PipelinePlan
+     ↓
+Desired Resources
