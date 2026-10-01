@@ -1,0 +1,29 @@
+name: Spike
+description: Time-boxed technical investigation
+title: "[Spike] "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What concrete uncertainty must this spike resolve?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence required
+      description: What experiment, source, or prototype will be enough to decide?
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected output
+      placeholder: Decision + evidence + ADR/RFC if needed.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
