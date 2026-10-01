@@ -8,7 +8,7 @@ Create a GitHub Project named **Pipeline Control Plane**.
 - Backlog
 - Ready
 - In Progress
-- Review
+- Review 
 - Verify
 - Done
 - Blocked
