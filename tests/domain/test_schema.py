@@ -34,6 +34,30 @@ def test_valid_scalar_schema() -> None:
     assert schema.columns[0].name == "id"
 
 
+@pytest.mark.parametrize(
+    "kind",
+    [
+        CanonicalTypeKind.BOOLEAN,
+        CanonicalTypeKind.TINYINT,
+        CanonicalTypeKind.SMALLINT,
+        CanonicalTypeKind.INT,
+        CanonicalTypeKind.BIGINT,
+        CanonicalTypeKind.FLOAT,
+        CanonicalTypeKind.DOUBLE,
+        CanonicalTypeKind.STRING,
+        CanonicalTypeKind.BYTES,
+        CanonicalTypeKind.DATE,
+        CanonicalTypeKind.RAW,
+    ],
+)
+def test_plain_scalar_types_are_valid(
+    kind: CanonicalTypeKind,
+) -> None:
+    data_type = CanonicalType(kind=kind)
+
+    assert data_type.kind == kind
+
+
 def test_decimal_is_valid() -> None:
     data_type = CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=2)
 
@@ -86,14 +110,6 @@ def test_decimal_accepts_boundary_values(
     assert data_type.scale == scale
 
 
-"""
-String
-length = 10 -> valid
-length = 0 -> invalid
-lenght = -1 -> invalid
-"""
-
-
 @pytest.mark.parametrize(
     "kind",
     [
@@ -103,7 +119,7 @@ lenght = -1 -> invalid
         CanonicalTypeKind.VARBINARY,
     ],
 )
-def test_length_bearing_type_accept_positive_length(kind: CanonicalTypeKind) -> None:
+def test_length_bearing_types_accept_positive_length(kind: CanonicalTypeKind) -> None:
     data_type = CanonicalType(kind=kind, length=10)
     assert data_type.length == 10
 
@@ -121,10 +137,10 @@ def test_length_bearing_type_accept_positive_length(kind: CanonicalTypeKind) -> 
     "length",
     [0, -1],
 )
-def test_length_bearing_type_reject_non_positive_length(
+def test_length_bearing_types_reject_non_positive_length(
     kind: CanonicalTypeKind, length: int
 ) -> None:
-    with pytest.raises(ValueError, match="requires length > 0"):
+    with pytest.raises(ValidationError, match="requires length > 0"):
         CanonicalType(kind=kind, length=length)
 
 
@@ -145,3 +161,21 @@ def test_length_bearing_types_require_length(
         match="requires length > 0",
     ):
         CanonicalType(kind=kind)
+
+
+def test_array_is_valid() -> None:
+    data_type = CanonicalType(
+        kind=CanonicalTypeKind.ARRAY,
+        element_type=CanonicalType(
+            kind=CanonicalTypeKind.STRING,
+        ),
+    )
+
+    assert data_type.kind == CanonicalTypeKind.ARRAY
+    assert data_type.element_type is not None
+    assert data_type.element_type.kind == CanonicalTypeKind.STRING
+
+
+def test_array_rejects_missing_element_type() -> None:
+    with pytest.raises(ValidationError, match="requires element_type"):
+        CanonicalType(kind=CanonicalTypeKind.ARRAY)
