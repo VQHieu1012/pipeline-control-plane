@@ -60,6 +60,31 @@ class CanonicalTypeKind(StrEnum):
     RAW = "RAW"
 
 
+ALLOWED_TYPE_PARAMETERS = {
+    CanonicalTypeKind.DECIMAL: {"precision", "scale"},
+    CanonicalTypeKind.CHAR: {"length"},
+    CanonicalTypeKind.VARCHAR: {"length"},
+    CanonicalTypeKind.BINARY: {"length"},
+    CanonicalTypeKind.VARBINARY: {"length"},
+    CanonicalTypeKind.TIME: {"precision"},
+    CanonicalTypeKind.TIMESTAMP: {"precision"},
+    CanonicalTypeKind.TIMESTAMP_LTZ: {"precision"},
+    CanonicalTypeKind.ARRAY: {"element_type"},
+    CanonicalTypeKind.MAP: {"key_type", "value_type"},
+    CanonicalTypeKind.ROW: {"fields"},
+}
+
+TYPE_PARAMETER_FIELDS = {
+    "length",
+    "precision",
+    "scale",
+    "element_type",
+    "key_type",
+    "value_type",
+    "fields",
+}
+
+
 class NativeTypeMetadata(DomainModel):
     type_name: str
     full_type: str | None = None
@@ -105,8 +130,45 @@ class CanonicalType(DomainModel):
 
     fields: tuple[CanonicalField, ...] = ()
 
+    def _validate_allowed_parameters(self) -> None:
+        allowed = ALLOWED_TYPE_PARAMETERS.get(self.kind, set())
+
+        supplied = self.model_fields_set & TYPE_PARAMETER_FIELDS
+        invalid = supplied - allowed
+
+        if invalid:
+            invalid_names = ", ".join(sorted(invalid))
+
+            raise ValueError(
+                f"{self.kind} does not allow parameters: " f"{invalid_names}"
+            )
+
+    @model_validator(mode="before")
+    def apply_default(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+
+        kind = data.get("kind")
+
+        temporal_types = {
+            CanonicalTypeKind.TIME,
+            CanonicalTypeKind.TIMESTAMP,
+            CanonicalTypeKind.TIMESTAMP_LTZ,
+            "TIME",
+            "TIMESTAMP",
+            "TIMESTAMP_LTZ",
+        }
+
+        if kind in temporal_types and data.get("precision") is None:
+            data = dict(data)
+            data["precision"] = 3
+
+        return data
+
     @model_validator(mode="after")
     def validate_type(self) -> CanonicalType:
+        self._validate_allowed_parameters()
+
         if self.kind == CanonicalTypeKind.DECIMAL:
             if self.precision is None:
                 raise ValueError("DECIMAL requires precision")
@@ -126,6 +188,17 @@ class CanonicalType(DomainModel):
         ):
             if self.length is None or self.length <= 0:
                 raise ValueError(f"{self.kind} requires length > 0")
+
+        if self.kind in {
+            CanonicalTypeKind.TIME,
+            CanonicalTypeKind.TIMESTAMP,
+            CanonicalTypeKind.TIMESTAMP_LTZ,
+        }:
+            if self.precision is None:
+                raise ValueError(f"{self.kind} requires precision")
+
+            if not 0 <= self.precision <= 9:
+                raise ValueError(f"{self.kind} must satisfy 0 <= precision <= 9")
 
         if self.kind == CanonicalTypeKind.MAP:  # noqa: SIM102
             if self.key_type is None or self.value_type is None:

@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from control_plane.domain.schema import (
+    CanonicalField,
     CanonicalSchema,
     CanonicalType,
     CanonicalTypeKind,
@@ -179,3 +180,184 @@ def test_array_is_valid() -> None:
 def test_array_rejects_missing_element_type() -> None:
     with pytest.raises(ValidationError, match="requires element_type"):
         CanonicalType(kind=CanonicalTypeKind.ARRAY)
+
+
+def test_map_is_valid():
+    key_type = CanonicalType(kind=CanonicalTypeKind.STRING)
+
+    value_type = CanonicalType(kind=CanonicalTypeKind.INT)
+
+    data_type = CanonicalType(
+        kind=CanonicalTypeKind.MAP,
+        key_type=key_type,
+        value_type=value_type,
+    )
+
+    assert data_type.kind == CanonicalTypeKind.MAP
+
+    assert data_type.key_type is not None
+    assert data_type.value_type is not None
+
+    assert data_type.key_type == key_type
+    assert data_type.value_type == value_type
+
+
+@pytest.mark.parametrize(
+    ("key_type", "value_type"),
+    [
+        pytest.param(
+            CanonicalType(kind=CanonicalTypeKind.STRING), None, id="missing-value-type"
+        ),
+        pytest.param(
+            None,
+            CanonicalType(kind=CanonicalTypeKind.INT),
+            id="missing-key-type",
+        ),
+        pytest.param(
+            None,
+            None,
+            id="missing-key-value-type",
+        ),
+    ],
+)
+def test_map_rejects_missing_key_or_value(
+    key_type: CanonicalType | None,
+    value_type: CanonicalType | None,
+) -> None:
+    with pytest.raises(ValidationError, match="requires key_type and value_type"):
+        CanonicalType(
+            kind=CanonicalTypeKind.MAP,
+            key_type=key_type,
+            value_type=value_type,
+        )
+
+
+"""
+ROW
+có field không duplicate    valid
+không có field              invalid
+có field duplicate          invalid
+"""
+
+
+def test_row_is_valid() -> None:
+    field_1 = CanonicalField(
+        name="id", data_type=CanonicalType(kind=CanonicalTypeKind.INT)
+    )
+    field_2 = CanonicalField(
+        name="name", data_type=CanonicalType(kind=CanonicalTypeKind.STRING)
+    )
+
+    data_type = CanonicalType(kind=CanonicalTypeKind.ROW, fields=(field_1, field_2))
+
+    assert data_type.kind == CanonicalTypeKind.ROW
+    assert data_type.fields == (field_1, field_2)
+
+
+def test_row_rejects_missing_field() -> None:
+    with pytest.raises(ValidationError, match="requires fields"):
+        CanonicalType(kind=CanonicalTypeKind.ROW, fields=())
+
+
+def test_row_rejects_duplicate_field_name() -> None:
+    field_1 = CanonicalField(
+        name="id", data_type=CanonicalType(kind=CanonicalTypeKind.INT)
+    )
+    field_2 = CanonicalField(
+        name="id", data_type=CanonicalType(kind=CanonicalTypeKind.STRING)
+    )
+    with pytest.raises(ValidationError, match="duplicate field names"):
+        CanonicalType(kind=CanonicalTypeKind.ROW, fields=(field_1, field_2))
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        CanonicalTypeKind.TIME,
+        CanonicalTypeKind.TIMESTAMP,
+        CanonicalTypeKind.TIMESTAMP_LTZ,
+    ],
+)
+def test_temporal_types_default_precision_to_three(
+    kind: CanonicalTypeKind,
+) -> None:
+    data_type = CanonicalType(
+        kind=kind,
+    )
+
+    assert data_type.precision == 3
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        CanonicalTypeKind.TIME,
+        CanonicalTypeKind.TIMESTAMP,
+        CanonicalTypeKind.TIMESTAMP_LTZ,
+    ],
+)
+@pytest.mark.parametrize(
+    "precision",
+    [0, 9],
+)
+def test_temporal_types_accept_precision_boundaries(
+    kind: CanonicalTypeKind,
+    precision: int,
+) -> None:
+    data_type = CanonicalType(
+        kind=kind,
+        precision=precision,
+    )
+
+    assert data_type.precision == precision
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        CanonicalTypeKind.TIME,
+        CanonicalTypeKind.TIMESTAMP,
+        CanonicalTypeKind.TIMESTAMP_LTZ,
+    ],
+)
+@pytest.mark.parametrize(
+    "precision",
+    [-1, 10],
+)
+def test_temporal_types_reject_precision_outside_range(
+    kind: CanonicalTypeKind,
+    precision: int,
+) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="0 <= precision <= 9",
+    ):
+        CanonicalType(
+            kind=kind,
+            precision=precision,
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "extra"),
+    [
+        (
+            CanonicalTypeKind.VARCHAR,
+            {"length": 10, "precision": 10},
+        ),
+        (
+            CanonicalTypeKind.DECIMAL,
+            {"precision": 18, "scale": 2, "length": 10},
+        ),
+    ],
+)
+def test_data_type_rejects_invalid_parameters(
+    kind: CanonicalTypeKind,
+    extra: dict[str, object],
+) -> None:
+    payload = {"kind": kind, **extra}
+    with pytest.raises(
+        ValidationError,
+        match="does not allow parameters",
+    ):
+        CanonicalType.model_validate(payload)
