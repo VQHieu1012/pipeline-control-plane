@@ -341,14 +341,13 @@ def test_temporal_types_reject_precision_outside_range(
 @pytest.mark.parametrize(
     ("kind", "extra"),
     [
-        (
-            CanonicalTypeKind.VARCHAR,
-            {"length": 10, "precision": 10},
-        ),
-        (
-            CanonicalTypeKind.DECIMAL,
-            {"precision": 18, "scale": 2, "length": 10},
-        ),
+        (CanonicalTypeKind.VARCHAR, {"length": 10, "precision": 10}),
+        (CanonicalTypeKind.DECIMAL, {"precision": 18, "scale": 2, "length": 10}),
+        (CanonicalTypeKind.ARRAY, {"length": 10}),
+        (CanonicalTypeKind.MAP, {"precision": 2}),
+        (CanonicalTypeKind.ROW, {"length": 10}),
+        (CanonicalTypeKind.DATE, {"precision": 10}),
+        (CanonicalTypeKind.INT, {"length": None}),
     ],
 )
 def test_data_type_rejects_invalid_parameters(
