@@ -25,28 +25,52 @@ def test_valid_scalar_schema() -> None:
 
 
 def test_decimal_is_valid() -> None:
-    data_type = CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=200, scale=2)
+    data_type = CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=2)
 
     assert data_type.kind == CanonicalTypeKind.DECIMAL
-    assert data_type.precision == 200
+    assert data_type.precision == 18
     assert data_type.scale == 2
 
 
 def test_decimal_is_invalid_without_precision() -> None:
-    with pytest.raises(ValidationError, match="DECIMAL"):
+    with pytest.raises(ValidationError, match="requires precision"):
         CanonicalType(kind=CanonicalTypeKind.DECIMAL, scale=20)
 
 
 def test_decimal_is_invalid_without_scale() -> None:
-    with pytest.raises(ValidationError, match="scale"):
-        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=200)
+    with pytest.raises(ValidationError, match="requires scale"):
+        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=20)
 
 
-def test_decimal_is_invalid_with_invalid_precicion() -> None:
+def test_decimal_is_invalid_with_zero_precicion() -> None:
     with pytest.raises(ValidationError, match=">="):
-        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=0, scale=10)
+        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=0, scale=0)
 
 
-def test_decimal_is_invalid_with_invalid_scale() -> None:
-    with pytest.raises(ValidationError):
-        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=20, scale=-1)
+def test_decimal_is_invalid_with_negative_scale() -> None:
+    with pytest.raises(ValidationError, match="0 <= scale"):
+        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=-1)
+
+
+def test_decimal_rejects_with_scale_greater_than_precision() -> None:
+    with pytest.raises(ValidationError, match="scale <= precision"):
+        CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=20)
+
+
+@pytest.mark.parametrize(
+    ("precision", "scale"),
+    [
+        (1, 0),
+        (18, 18),
+    ],
+)
+def test_decimal_accepts_boundary_values(
+    precision: int,
+    scale: int,
+) -> None:
+    data_type = CanonicalType(
+        kind=CanonicalTypeKind.DECIMAL, precision=precision, scale=scale
+    )
+
+    assert data_type.precision == precision
+    assert data_type.scale == scale
