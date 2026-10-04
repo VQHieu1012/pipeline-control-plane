@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -21,7 +23,7 @@ class TableIdentity(DomainModel):
     system: SourceSystem
 
     catalog: str | None = None
-    schema: str | None = None
+    schema_name: str | None = Field(default=None, alias="schema")
 
     table: str
 
@@ -116,7 +118,7 @@ class CanonicalType(DomainModel):
             if not 0 <= self.scale <= self.precision:
                 raise ValueError("DECIMAL scale must satisfy 0 <= scale <= precision")
 
-        if self.kind in (
+        if self.kind in (  # noqa: SIM102
             CanonicalTypeKind.CHAR,
             CanonicalTypeKind.VARCHAR,
             CanonicalTypeKind.BINARY,
@@ -125,9 +127,13 @@ class CanonicalType(DomainModel):
             if self.length is None or self.length <= 0:
                 raise ValueError(f"{self.kind} requires length > 0")
 
-        if self.kind == CanonicalTypeKind.MAP:
+        if self.kind == CanonicalTypeKind.MAP:  # noqa: SIM102
             if self.key_type is None or self.value_type is None:
                 raise ValueError("MAP requires key_type and value_type")
+
+        if self.kind == CanonicalTypeKind.ARRAY:  # noqa: SIM102
+            if self.element_type is None:
+                raise ValueError("ARRAY requires element_type")
 
         if self.kind == CanonicalTypeKind.ROW:
             if not self.fields:
@@ -213,7 +219,7 @@ class CanonicalSchema(DomainModel):
         for unique_key in self.unique_keys:
             unknown = set(unique_key.columns) - known_columns
 
-        if unknown:
-            raise ValueError(f"unique key references unknown columns: {unknown}")
+            if unknown:
+                raise ValueError(f"unique key references unknown columns: {unknown}")
 
         return self
