@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DomainModel(BaseModel):
@@ -240,14 +240,28 @@ class Column(DomainModel):
 
 class PrimaryKey(DomainModel):
     name: str | None = None
-    columns: tuple[str, ...]
+    columns: tuple[str, ...] = Field(min_length=1)
     source_enforced: bool = True
+
+    @field_validator("columns")
+    @classmethod
+    def validate_columns(cls, columns: tuple[str, ...]) -> tuple[str, ...]:
+        if len(columns) != len(set(columns)):
+            raise ValueError("Primary key must not contain duplicate columns")
+        return columns
 
 
 class UniqueKey(DomainModel):
     name: str | None = None
-    columns: tuple[str, ...]
+    columns: tuple[str, ...] = Field(min_length=1)
     source_enforced: bool = True
+
+    @field_validator("columns")
+    @classmethod
+    def validate_columns(cls, columns: tuple[str, ...]) -> tuple[str, ...]:
+        if len(columns) != len(set(columns)):
+            raise ValueError("Unique key must not contain duplicate columns")
+        return columns
 
 
 class CanonicalSchema(DomainModel):
@@ -285,14 +299,20 @@ class CanonicalSchema(DomainModel):
 
         if self.primary_key is not None:
             unknown = set(self.primary_key.columns) - known_columns
+            unknown_names = ", ".join(sorted(unknown))
 
             if unknown:
-                raise ValueError(f"Primary key references unknown columns: {unknown}")
+                raise ValueError(
+                    f"Primary key references unknown columns: {unknown_names}"
+                )
 
         for unique_key in self.unique_keys:
             unknown = set(unique_key.columns) - known_columns
+            unknown_names = ", ".join(sorted(unknown))
 
             if unknown:
-                raise ValueError(f"Unique key references unknown columns: {unknown}")
+                raise ValueError(
+                    f"Unique key references unknown columns: {unknown_names}"
+                )
 
         return self

@@ -9,9 +9,9 @@ from control_plane.domain.schema import (
     Column,
     NativeTypeMetadata,
     PrimaryKey,
-    UniqueKey,
     SourceSystem,
     TableIdentity,
+    UniqueKey,
 )
 
 
@@ -592,3 +592,184 @@ def test_schema_rejects_unknown_unique_key_reference() -> None:
             ),
             unique_keys=(UniqueKey(name="uq_user_name", columns=("idx",)),),
         )
+
+
+def test_schema_allows_composite_primary_key() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="tenant_id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.STRING),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="text", full_type="text"),
+    )
+
+    column_3 = Column(
+        name="name",
+        ordinal=3,
+        data_type=CanonicalType(kind=CanonicalTypeKind.VARCHAR, length=200),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="varchar", full_type="varchar(200)"),
+    )
+
+    schema = CanonicalSchema(
+        schema_version=1,
+        table=TableIdentity(
+            system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+        ),
+        columns=(column_1, column_2, column_3),
+        primary_key=PrimaryKey(name="pk_id_tenant_id", columns=("id", "tenant_id")),
+    )
+
+    assert schema.primary_key is not None
+    assert schema.primary_key.name == "pk_id_tenant_id"
+    assert schema.primary_key.columns == ("id", "tenant_id")
+
+
+def test_schema_rejects_unknown_column_in_composite_primary_key() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="tenant_id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.STRING),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="text", full_type="text"),
+    )
+
+    with pytest.raises(ValidationError, match="Primary key references unknown"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(column_1, column_2),
+            primary_key=PrimaryKey(name="pk_id_tenant_id", columns=("id", "name")),
+        )
+
+
+def test_schema_allows_composite_unique_key() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="tenant_id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.STRING),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="text", full_type="text"),
+    )
+
+    column_3 = Column(
+        name="name",
+        ordinal=3,
+        data_type=CanonicalType(kind=CanonicalTypeKind.VARCHAR, length=200),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="varchar", full_type="varchar(200)"),
+    )
+
+    schema = CanonicalSchema(
+        schema_version=1,
+        table=TableIdentity(
+            system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+        ),
+        columns=(column_1, column_2, column_3),
+        unique_keys=(UniqueKey(name="uniq_id_tenant_id", columns=("id", "tenant_id")),),
+    )
+
+    assert len(schema.unique_keys) == 1
+    assert schema.unique_keys[0].name == "uniq_id_tenant_id"
+    assert schema.unique_keys[0].columns == ("id", "tenant_id")
+
+
+def test_schema_rejects_unknown_column_in_composite_unique_key() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="tenant_id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.STRING),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="text", full_type="text"),
+    )
+
+    with pytest.raises(ValidationError, match="Unique key references unknown"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(column_1, column_2),
+            unique_keys=(
+                UniqueKey(
+                    name="uniq_id_tenant_id",
+                    columns=("id", "name"),
+                ),
+            ),
+        )
+
+
+def test_primary_key_allows_non_empty_columns() -> None:
+    pk = PrimaryKey(name="pk_id", columns=("id",))
+
+    assert pk.name == "pk_id"
+    assert pk.columns == ("id",)
+
+
+def test_primary_key_rejects_empty_columns() -> None:
+    with pytest.raises(ValidationError):
+        PrimaryKey(name="pk_id", columns=())
+
+
+def test_primary_key_rejects_duplicate_columns() -> None:
+    with pytest.raises(ValidationError):
+        PrimaryKey(name="pk_id", columns=("id", "id"))
+
+
+def test_unique_key_allows_non_empty_columns() -> None:
+    unique_key = UniqueKey(name="uniq_id", columns=("id",))
+
+    assert unique_key.name == "uniq_id"
+    assert unique_key.columns == ("id",)
+
+
+def test_unique_key_rejects_empty_columns() -> None:
+    with pytest.raises(ValidationError):
+        UniqueKey(name="uniq_id", columns=())
+
+
+def test_unique_key_rejects_duplicate_columns() -> None:
+    with pytest.raises(ValidationError):
+        UniqueKey(name="uniq_id", columns=("id", "id"))
