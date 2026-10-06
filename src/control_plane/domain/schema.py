@@ -279,7 +279,7 @@ class CanonicalSchema(DomainModel):
             raise ValueError("Duplicate column ordinals")
 
         if ordinals != sorted(ordinals):
-            raise ValueError("columns must be ordered by ordinal")
+            raise ValueError("Columns must be ordered by ordinal")
 
         known_columns = set(column_names)
 
@@ -287,12 +287,12 @@ class CanonicalSchema(DomainModel):
             unknown = set(self.primary_key.columns) - known_columns
 
             if unknown:
-                raise ValueError(f"primary key references unknown columns: {unknown}")
+                raise ValueError(f"Primary key references unknown columns: {unknown}")
 
         for unique_key in self.unique_keys:
             unknown = set(unique_key.columns) - known_columns
 
             if unknown:
-                raise ValueError(f"unique key references unknown columns: {unknown}")
+                raise ValueError(f"Unique key references unknown columns: {unknown}")
 
         return self

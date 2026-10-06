@@ -9,6 +9,7 @@ from control_plane.domain.schema import (
     Column,
     NativeTypeMetadata,
     PrimaryKey,
+    UniqueKey,
     SourceSystem,
     TableIdentity,
 )
@@ -360,3 +361,234 @@ def test_data_type_rejects_invalid_parameters(
         match="does not allow parameters",
     ):
         CanonicalType.model_validate(payload)
+
+
+def test_column_is_valid() -> None:
+    column = Column(
+        name="UserID",
+        ordinal=1,
+        data_type=CanonicalType(
+            kind=CanonicalTypeKind.BIGINT,
+        ),
+        nullable=False,
+        native=NativeTypeMetadata(type_name="bigint", full_type="bigint"),
+    )
+
+    assert column.name == "UserID"
+    assert column.ordinal == 1
+    assert column.data_type.kind == CanonicalTypeKind.BIGINT
+    assert column.nullable is False
+
+
+@pytest.mark.parametrize(
+    "ordinal",
+    [0, -1],
+)
+def test_column_rejects_non_positive_ordinal(
+    ordinal: int,
+) -> None:
+    with pytest.raises(ValidationError):
+        Column(
+            name="id",
+            ordinal=ordinal,
+            data_type=CanonicalType(
+                kind=CanonicalTypeKind.INT,
+            ),
+            nullable=False,
+            native=NativeTypeMetadata(
+                type_name="int",
+                full_type="int",
+            ),
+        )
+
+
+def test_column_preserves_native_name_exactly() -> None:
+    column = Column(
+        name="UserId",
+        ordinal=1,
+        data_type=CanonicalType(
+            kind=CanonicalTypeKind.INT,
+        ),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="int",
+            full_type="int",
+        ),
+    )
+
+    assert column.name == "UserId"
+
+
+def test_schema_rejects_duplicate_column_names() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="Duplicate column names"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(
+                column_1,
+                column_2,
+            ),
+            primary_key=PrimaryKey(name="id", columns=("id",)),
+        )
+
+
+def test_schema_rejects_duplicate_ordinals() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="user_name",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="Duplicate column ordinals"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(
+                column_1,
+                column_2,
+            ),
+            primary_key=PrimaryKey(name="id", columns=("id",)),
+        )
+
+
+def test_schema_rejects_non_ordered_ordinals() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="user_name",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="must be ordered by ordinal"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(
+                column_1,
+                column_2,
+            ),
+            primary_key=PrimaryKey(name="id", columns=("id",)),
+        )
+
+
+def test_schema_rejects_unknown_primary_key_reference() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="user_name",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="Primary key references unknown"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(
+                column_1,
+                column_2,
+            ),
+            primary_key=PrimaryKey(name="pk_user", columns=("idx",)),
+        )
+
+
+def test_schema_rejects_unknown_unique_key_reference() -> None:
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    column_2 = Column(
+        name="user_name",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
+        nullable=False,
+        native=NativeTypeMetadata(
+            type_name="bigint", full_type="bigint", auto_increment=True
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="Unique key references unknown"):
+        CanonicalSchema(
+            schema_version=1,
+            table=TableIdentity(
+                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
+            ),
+            columns=(
+                column_1,
+                column_2,
+            ),
+            unique_keys=(UniqueKey(name="uq_user_name", columns=("idx",)),),
+        )
