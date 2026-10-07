@@ -9,6 +9,8 @@ class DomainModel(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
+        validate_by_name=True,
+        validate_by_alias=True,
     )
 
 
@@ -74,14 +76,14 @@ ALLOWED_TYPE_PARAMETERS = {
     CanonicalTypeKind.ROW: {"fields"},
 }
 
-TYPE_PARAMETER_FIELDS = {
-    "length",
-    "precision",
-    "scale",
-    "element_type",
-    "key_type",
-    "value_type",
-    "fields",
+TYPE_PARAMETER_DEFAULTS = {
+    "length": None,
+    "precision": None,
+    "scale": None,
+    "element_type": None,
+    "key_type": None,
+    "value_type": None,
+    "fields": (),
 }
 
 
@@ -133,7 +135,11 @@ class CanonicalType(DomainModel):
     def _validate_allowed_parameters(self) -> None:
         allowed = ALLOWED_TYPE_PARAMETERS.get(self.kind, set())
 
-        supplied = self.model_fields_set & TYPE_PARAMETER_FIELDS
+        supplied = {
+            field_name
+            for field_name, default_values in TYPE_PARAMETER_DEFAULTS.items()
+            if getattr(self, field_name) != default_values
+        }
         invalid = supplied - allowed
 
         if invalid:

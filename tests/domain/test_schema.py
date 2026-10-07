@@ -15,12 +15,47 @@ from control_plane.domain.schema import (
 )
 
 
+def make_column(
+    name: str = "id",
+    ordinal: int = 1,
+    *,
+    data_type: CanonicalType | None = None,
+    nullable: bool = False,
+    native: NativeTypeMetadata | None = None,
+) -> Column:
+    return Column(
+        name=name,
+        ordinal=ordinal,
+        data_type=data_type or CanonicalType(kind=CanonicalTypeKind.INT),
+        nullable=nullable,
+        native=native
+        or NativeTypeMetadata(
+            type_name="int",
+            full_type="INT",
+        ),
+    )
+
+
+def make_schema(
+    columns: tuple[Column, ...],
+    *,
+    table: TableIdentity | None = None,
+    primary_key: PrimaryKey | None = None,
+    unique_keys: tuple[UniqueKey, ...] = (),
+) -> CanonicalSchema:
+    return CanonicalSchema(
+        schema_version=1,
+        table=table or make_table_identity(),
+        columns=columns,
+        primary_key=primary_key,
+        unique_keys=unique_keys,
+    )
+
+
 def test_valid_scalar_schema() -> None:
     schema = CanonicalSchema(
         schema_version=1,
-        table=TableIdentity(
-            system=SourceSystem.SQLSERVER, catalog="sales", schema="dbo", table="orders"
-        ),
+        table=make_table_identity(),
         columns=(
             Column(
                 name="id",
@@ -348,7 +383,6 @@ def test_temporal_types_reject_precision_outside_range(
         (CanonicalTypeKind.MAP, {"precision": 2}),
         (CanonicalTypeKind.ROW, {"length": 10}),
         (CanonicalTypeKind.DATE, {"precision": 10}),
-        (CanonicalTypeKind.INT, {"length": None}),
     ],
 )
 def test_data_type_rejects_invalid_parameters(
@@ -361,6 +395,30 @@ def test_data_type_rejects_invalid_parameters(
         match="does not allow parameters",
     ):
         CanonicalType.model_validate(payload)
+
+
+def test_plain_scalar_allows_irrelevant_parameter_when_none() -> None:
+    data_type = CanonicalType(
+        kind=CanonicalTypeKind.INT,
+        length=None,
+    )
+
+    assert data_type.kind == CanonicalTypeKind.INT
+
+
+def make_table_identity(
+    *,
+    system: SourceSystem = SourceSystem.SQLSERVER,
+    catalog: str | None = "test_db",
+    schema_name: str | None = "dbo",
+    table: str = "users",
+) -> TableIdentity:
+    return TableIdentity(
+        system=system,
+        catalog=catalog,
+        schema=schema_name,
+        table=table,
+    )
 
 
 def test_column_is_valid() -> None:
@@ -443,9 +501,7 @@ def test_schema_rejects_duplicate_column_names() -> None:
     with pytest.raises(ValidationError, match="Duplicate column names"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(
                 column_1,
                 column_2,
@@ -455,32 +511,20 @@ def test_schema_rejects_duplicate_column_names() -> None:
 
 
 def test_schema_rejects_duplicate_ordinals() -> None:
-    column_1 = Column(
+    column_1 = make_column(
         name="id",
         ordinal=1,
-        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
-        nullable=False,
-        native=NativeTypeMetadata(
-            type_name="bigint", full_type="bigint", auto_increment=True
-        ),
     )
 
-    column_2 = Column(
+    column_2 = make_column(
         name="user_name",
         ordinal=1,
-        data_type=CanonicalType(kind=CanonicalTypeKind.BIGINT),
-        nullable=False,
-        native=NativeTypeMetadata(
-            type_name="bigint", full_type="bigint", auto_increment=True
-        ),
     )
 
     with pytest.raises(ValidationError, match="Duplicate column ordinals"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(
                 column_1,
                 column_2,
@@ -513,9 +557,7 @@ def test_schema_rejects_non_ordered_ordinals() -> None:
     with pytest.raises(ValidationError, match="must be ordered by ordinal"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(
                 column_1,
                 column_2,
@@ -548,9 +590,7 @@ def test_schema_rejects_unknown_primary_key_reference() -> None:
     with pytest.raises(ValidationError, match="Primary key references unknown"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(
                 column_1,
                 column_2,
@@ -583,9 +623,7 @@ def test_schema_rejects_unknown_unique_key_reference() -> None:
     with pytest.raises(ValidationError, match="Unique key references unknown"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(
                 column_1,
                 column_2,
@@ -623,9 +661,7 @@ def test_schema_allows_composite_primary_key() -> None:
 
     schema = CanonicalSchema(
         schema_version=1,
-        table=TableIdentity(
-            system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-        ),
+        table=make_table_identity(),
         columns=(column_1, column_2, column_3),
         primary_key=PrimaryKey(name="pk_id_tenant_id", columns=("id", "tenant_id")),
     )
@@ -657,9 +693,7 @@ def test_schema_rejects_unknown_column_in_composite_primary_key() -> None:
     with pytest.raises(ValidationError, match="Primary key references unknown"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(column_1, column_2),
             primary_key=PrimaryKey(name="pk_id_tenant_id", columns=("id", "name")),
         )
@@ -694,9 +728,7 @@ def test_schema_allows_composite_unique_key() -> None:
 
     schema = CanonicalSchema(
         schema_version=1,
-        table=TableIdentity(
-            system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-        ),
+        table=make_table_identity(),
         columns=(column_1, column_2, column_3),
         unique_keys=(UniqueKey(name="uniq_id_tenant_id", columns=("id", "tenant_id")),),
     )
@@ -728,9 +760,7 @@ def test_schema_rejects_unknown_column_in_composite_unique_key() -> None:
     with pytest.raises(ValidationError, match="Unique key references unknown"):
         CanonicalSchema(
             schema_version=1,
-            table=TableIdentity(
-                system=SourceSystem.SQLSERVER, catalog="", schema="dbo", table="user"
-            ),
+            table=make_table_identity(),
             columns=(column_1, column_2),
             unique_keys=(
                 UniqueKey(
@@ -773,3 +803,179 @@ def test_unique_key_rejects_empty_columns() -> None:
 def test_unique_key_rejects_duplicate_columns() -> None:
     with pytest.raises(ValidationError):
         UniqueKey(name="uniq_id", columns=("id", "id"))
+
+
+def test_schema_round_trips_through_json() -> None:
+    table_identity = make_table_identity()
+
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=0),
+        native=NativeTypeMetadata(
+            type_name="decimal",
+            full_type="DECINAL(18,0)",
+            precision=18,
+            scale=0,
+            auto_increment=True,
+        ),
+        nullable=False,
+    )
+
+    column_2 = Column(
+        name="age",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.INT),
+        native=NativeTypeMetadata(
+            type_name="int",
+            full_type="INT",
+            auto_increment=False,
+        ),
+        nullable=False,
+    )
+
+    primary_key = PrimaryKey(name="pk_id", columns=("id",))
+    unique_keys = (UniqueKey(name="uniq_id", columns=("id",)),)
+
+    schema = CanonicalSchema(
+        schema_version=1,
+        table=table_identity,
+        columns=(column_1, column_2),
+        primary_key=primary_key,
+        unique_keys=unique_keys,
+    )
+
+    payload = schema.model_dump_json()
+    restored = CanonicalSchema.model_validate_json(payload)
+
+    assert restored == schema
+
+
+def test_schema_serializes_table_schema_using_alias() -> None:
+    table_identity = make_table_identity()
+
+    column_1 = Column(
+        name="id",
+        ordinal=1,
+        data_type=CanonicalType(kind=CanonicalTypeKind.DECIMAL, precision=18, scale=0),
+        native=NativeTypeMetadata(
+            type_name="decimal",
+            full_type="DECIMAL(18,0)",
+            precision=18,
+            scale=0,
+            auto_increment=True,
+        ),
+        nullable=False,
+    )
+
+    column_2 = Column(
+        name="age",
+        ordinal=2,
+        data_type=CanonicalType(kind=CanonicalTypeKind.INT),
+        native=NativeTypeMetadata(
+            type_name="int",
+            full_type="INT",
+            auto_increment=False,
+        ),
+        nullable=False,
+    )
+
+    primary_key = PrimaryKey(name="pk_id", columns=("id",))
+    unique_keys = (UniqueKey(name="uniq_id", columns=("id",)),)
+
+    schema = CanonicalSchema(
+        schema_version=1,
+        table=table_identity,
+        columns=(column_1, column_2),
+        primary_key=primary_key,
+        unique_keys=unique_keys,
+    )
+
+    payload = schema.model_dump(by_alias=True)
+    assert payload["table"]["schema"] == "dbo"
+    assert "schema_name" not in payload["table"]
+
+    restored = CanonicalSchema.model_validate(payload)
+
+    assert restored == schema
+
+
+def test_nested_logical_types_are_valid() -> None:
+    id_field = CanonicalField(
+        name="id",
+        data_type=CanonicalType(
+            kind=CanonicalTypeKind.INT,
+        ),
+        nullable=False,
+    )
+
+    tags_field = CanonicalField(
+        name="tags",
+        data_type=CanonicalType(
+            kind=CanonicalTypeKind.ARRAY,
+            element_type=CanonicalType(
+                kind=CanonicalTypeKind.STRING,
+            ),
+        ),
+    )
+
+    attributes_field = CanonicalField(
+        name="attributes",
+        data_type=CanonicalType(
+            kind=CanonicalTypeKind.MAP,
+            key_type=CanonicalType(
+                kind=CanonicalTypeKind.STRING,
+            ),
+            value_type=CanonicalType(
+                kind=CanonicalTypeKind.VARCHAR,
+                length=100,
+            ),
+        ),
+    )
+
+    data_type = CanonicalType(
+        kind=CanonicalTypeKind.ROW,
+        fields=(
+            id_field,
+            tags_field,
+            attributes_field,
+        ),
+    )
+
+    assert data_type.kind == CanonicalTypeKind.ROW
+
+    tags_type = data_type.fields[1].data_type
+    assert tags_type.kind == CanonicalTypeKind.ARRAY
+    assert tags_type.element_type is not None
+    assert tags_type.element_type.kind == CanonicalTypeKind.STRING
+
+    attributes_type = data_type.fields[2].data_type
+    assert attributes_type.kind == CanonicalTypeKind.MAP
+    assert attributes_type.key_type is not None
+    assert attributes_type.value_type is not None
+    assert attributes_type.key_type.kind == CanonicalTypeKind.STRING
+    assert attributes_type.value_type.kind == CanonicalTypeKind.VARCHAR
+    assert attributes_type.value_type.length == 100
+
+
+def test_canonical_type_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        CanonicalType.model_validate(
+            {
+                "kind": CanonicalTypeKind.INT,
+                "unknown_field": 123,
+            }
+        )
+
+
+def test_table_identity_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        TableIdentity.model_validate(
+            {
+                "system": SourceSystem.SQLSERVER,
+                "catalog": "user",
+                "schema": "dbo",
+                "table": "UserInfo",
+                "unexpected": "value",
+            }
+        )
