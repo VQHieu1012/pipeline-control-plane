@@ -30,7 +30,23 @@ class FakeSourceIntrospector:
         catalog: str | None,
         schema_name: str | None,
     ) -> tuple[TableIdentity, ...]:
-        return self._tables
+        filtered_table = tuple(
+            table
+            for table in self._tables
+            if (catalog is None or table.catalog == catalog)
+            and (schema_name is None or table.schema_name == schema_name)
+        )
+
+        return tuple(
+            sorted(
+                filtered_table,
+                key=lambda table: (
+                    table.catalog or "",
+                    table.schema_name or "",
+                    table.table,
+                ),
+            )
+        )
 
     def introspect_table(
         self,
@@ -113,14 +129,14 @@ def test_source_introspector_raises_table_not_found_for_unknown_table() -> None:
     known_table = TableIdentity(
         system=SourceSystem.SQLSERVER,
         catalog="sales",
-        schema_name="dbo",
+        schema_name="dbo",  # type: ignore
         table="users",
     )
 
     unknown_table = TableIdentity(
         system=SourceSystem.SQLSERVER,
         catalog="sales",
-        schema_name="dbo",
+        schema_name="dbo",  # type: ignore
         table="orders",
     )
 
@@ -131,3 +147,91 @@ def test_source_introspector_raises_table_not_found_for_unknown_table() -> None:
 
     with pytest.raises(SourceTableNotFoundError):
         introspector.introspect_table(unknown_table)
+
+
+def test_source_introspector_lists_tables_within_requested_scope() -> None:
+    table_1 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",  # type: ignore
+        table="users",
+    )
+
+    table_2 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",  # type: ignore
+        table="orders",
+    )
+
+    table_3 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="audit",  # type: ignore
+        table="events",
+    )
+
+    table_4 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="hr",
+        schema_name="dbo",  # type: ignore
+        table="employees",
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(table_1, table_2, table_3, table_4),
+        schemas=(),
+    )
+
+    tables = introspector.list_tables(catalog="sales", schema_name="dbo")
+    assert tables == (table_2, table_1)
+
+    tables = introspector.list_tables(catalog=None, schema_name="dbo")
+    assert tables == (table_4, table_2, table_1)
+
+    tables = introspector.list_tables(catalog="hr", schema_name=None)
+    assert tables == (table_4,)
+
+    tables = introspector.list_tables(
+        catalog=None,
+        schema_name=None,
+    )
+
+    assert tables == (
+        table_4,
+        table_3,
+        table_2,
+        table_1,
+    )
+
+
+def test_source_introspector_list_deterministic_tables() -> None:
+
+    table_1 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",  # type: ignore
+        table="users",
+    )
+
+    table_2 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",  # type: ignore
+        table="orders",
+    )
+
+    table_3 = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="audit",  # type: ignore
+        table="events",
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(table_2, table_1, table_3), schemas=()
+    )
+
+    result = introspector.list_tables(catalog="sales", schema_name="dbo")
+
+    assert result == (table_2, table_1)
