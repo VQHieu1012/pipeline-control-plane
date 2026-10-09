@@ -1,3 +1,5 @@
+import pytest
+
 from control_plane.domain.schema import (
     CanonicalSchema,
     CanonicalType,
@@ -7,14 +9,17 @@ from control_plane.domain.schema import (
     SourceSystem,
     TableIdentity,
 )
-from control_plane.ports.source_introspector import SourceIntrospector
+from control_plane.ports.source_introspector import (
+    SourceIntrospector,
+    SourceTableNotFoundError,
+)
 
 
 class FakeSourceIntrospector:
     def __init__(
         self,
         tables: tuple[TableIdentity, ...],
-        schemas: dict[TableIdentity, CanonicalSchema],
+        schemas: tuple[CanonicalSchema, ...],
     ) -> None:
         self._tables = tables
         self._schemas = schemas
@@ -31,7 +36,12 @@ class FakeSourceIntrospector:
         self,
         table: TableIdentity,
     ) -> CanonicalSchema:
-        return self._schemas[table]
+        for schema in self._schemas:
+            if schema.table == table:
+                return schema
+        raise SourceTableNotFoundError(
+            f"Table not found: " f"{table.catalog}.{table.schema_name}.{table.table}"
+        )
 
 
 def test_source_introspector_lists_concrete_tables() -> None:
@@ -41,7 +51,7 @@ def test_source_introspector_lists_concrete_tables() -> None:
 
     introspector: SourceIntrospector = FakeSourceIntrospector(
         tables=(table,),
-        schemas={},
+        schemas=(),
     )
 
     result = introspector.list_tables(
@@ -91,16 +101,33 @@ def test_source_introspector_returns_canonical_schema() -> None:
 
     introspector: SourceIntrospector = FakeSourceIntrospector(
         tables=(table,),
-        schemas={
-            table: schema,  # type: ignore
-        },
+        schemas=(schema,),
     )
 
-    result = introspector.list_tables(
-        catalog="sales",
-        schema_name="dbo",
-    )
-
-    schema_result = introspector.introspect_table(result[0])
+    schema_result = introspector.introspect_table(table)
 
     assert schema_result == schema
+
+
+def test_source_introspector_raises_table_not_found_for_unknown_table() -> None:
+    known_table = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",
+        table="users",
+    )
+
+    unknown_table = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema_name="dbo",
+        table="orders",
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(known_table,),
+        schemas=(),
+    )
+
+    with pytest.raises(SourceTableNotFoundError):
+        introspector.introspect_table(unknown_table)

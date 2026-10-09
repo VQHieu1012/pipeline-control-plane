@@ -15,3 +15,19 @@ class SourceIntrospector(Protocol):
         self,
         table: TableIdentity,
     ) -> CanonicalSchema: ...
+
+
+class SourceIntrospectionError(Exception):
+    """Base error for source metadata introspection."""
+
+
+class SourceUnavailableError(SourceIntrospectionError):
+    """The source cannot be reached."""
+
+
+class SourceTableNotFoundError(SourceIntrospectionError):
+    """The requested table does not exist."""
+
+
+class UnsupportedSourceMetadataError(SourceIntrospectionError):
+    """Source metadata cannot be represented by the current contract."""
