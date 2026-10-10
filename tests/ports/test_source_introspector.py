@@ -12,6 +12,8 @@ from control_plane.domain.schema import (
 from control_plane.ports.source_introspector import (
     SourceIntrospector,
     SourceTableNotFoundError,
+    SourceUnavailableError,
+    UnsupportedSourceMetadataError,
 )
 
 
@@ -20,9 +22,18 @@ class FakeSourceIntrospector:
         self,
         tables: tuple[TableIdentity, ...],
         schemas: tuple[CanonicalSchema, ...],
+        *,
+        available: bool = True,
+        unsupported_tables: tuple[TableIdentity, ...] = (),
     ) -> None:
         self._tables = tables
         self._schemas = schemas
+        self._available = available
+        self._unsupported_tables = unsupported_tables
+
+    def _ensure_available(self) -> None:
+        if not self._available:
+            raise SourceUnavailableError("Source is unavailable")
 
     def list_tables(
         self,
@@ -30,6 +41,8 @@ class FakeSourceIntrospector:
         catalog: str | None,
         schema_name: str | None,
     ) -> tuple[TableIdentity, ...]:
+        self._ensure_available()
+
         filtered_table = tuple(
             table
             for table in self._tables
@@ -52,9 +65,18 @@ class FakeSourceIntrospector:
         self,
         table: TableIdentity,
     ) -> CanonicalSchema:
+        self._ensure_available()
+
+        if table in self._unsupported_tables:
+            raise UnsupportedSourceMetadataError(
+                f"Unsupported metadata for table: "
+                f"{table.catalog}.{table.schema_name}.{table.table}"
+            )
+
         for schema in self._schemas:
             if schema.table == table:
                 return schema
+
         raise SourceTableNotFoundError(
             f"Table not found: " f"{table.catalog}.{table.schema_name}.{table.table}"
         )
@@ -235,3 +257,81 @@ def test_source_introspector_list_deterministic_tables() -> None:
     result = introspector.list_tables(catalog="sales", schema_name="dbo")
 
     assert result == (table_2, table_1)
+
+
+def test_source_introspector_rejects_unknown_table() -> None:
+    known_table = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema="dbo",
+        table="users",
+    )
+
+    unknown_table = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema="dbo",
+        table="orders",
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(known_table,),
+        schemas=(),
+    )
+
+    with pytest.raises(SourceTableNotFoundError):
+        introspector.introspect_table(unknown_table)
+
+
+def test_source_introspector_rejects_list_when_source_unavailable() -> None:
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(),
+        schemas=(),
+        available=False,
+    )
+
+    with pytest.raises(SourceUnavailableError):
+        introspector.list_tables(
+            catalog="sales",
+            schema_name="dbo",
+        )
+
+
+def test_source_introspector_rejects_introspection_when_source_unavailable() -> None:
+    table = TableIdentity(
+        system=SourceSystem.SQLSERVER,
+        catalog="sales",
+        schema="dbo",
+        table="users",
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(table,),
+        schemas=(),
+        available=False,
+    )
+
+    with pytest.raises(SourceUnavailableError):
+        introspector.introspect_table(table)
+
+
+def test_source_introspector_rejects_unsupported_metadata() -> None:
+    """
+    1. source available?
+    2. table unsupported metadata?
+    3. schema exists?
+    4. return CanonicalSchema
+    """
+
+    table = TableIdentity(
+        system=SourceSystem.SQLSERVER, catalog="sales", schema="dbo", table="users"
+    )
+
+    introspector: SourceIntrospector = FakeSourceIntrospector(
+        tables=(table,),
+        schemas=(),
+        unsupported_tables=(table,),
+    )
+
+    with pytest.raises(UnsupportedSourceMetadataError):
+        introspector.introspect_table(table)

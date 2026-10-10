@@ -22,7 +22,7 @@ class SourceIntrospectionError(Exception):
 
 
 class SourceUnavailableError(SourceIntrospectionError):
-    """The source cannot be reached."""
+    """The source database cannot be reached."""
 
 
 class SourceTableNotFoundError(SourceIntrospectionError):
