@@ -70,7 +70,4 @@ def test_sqlserver_list_tables_maps_metadata_rows() -> None:
     )
     print(result)
 
-    assert tuple(table.table for table in result) == (
-        "orders",
-        "users",
-    )
+    assert tuple(table.table for table in result) == ("orders", "users")
